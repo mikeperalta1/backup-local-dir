@@ -64,13 +64,22 @@ do_backup()
 
 	list_snapshots "${REPO}"
 
+	local COMMAND=""
+	COMMAND+="restic backup"
+	COMMAND+=" -r \"${REPO}\""
+	COMMAND+=" \"${LOCAL_DIR}\""
+	COMMAND+=" --exclude='.sync_*'"
+	if [ "$RESTIC_TAG" != "" ] ; then
+		COMMAND+=" --tag \"${RESTIC_TAG}\""
+	fi
 	log "Backing up local dir \"${LOCAL_DIR}\" to: ${REPO}"
-	restic backup -r "${REPO}" "${LOCAL_DIR}" \
-		--exclude='.sync_*'
+	log "Using command: "
+	log "$COMMAND"
+	eval "${COMMAND}"
 	if [ "$?" -ne 0 ] ; then
 		die "Failed to backup!: \"${LOCAL_DIR}\" to \"${REPO}\""
 	fi
-	log "Success"
+	log "Backup was successful"
 
 	list_snapshots "${REPO}"
 }
@@ -79,9 +88,21 @@ forget_snapshots()
 	local REPO="$1"
 	local WITHIN="$2"
 
-	#
+	local COMMAND=""
+	COMMAND+="restic forget"
+	COMMAND+=" -r \"${REPO}\""
+	COMMAND+=" --keep-within \"${WITHIN}\""
+	if [ "$RESTIC_TAG" != "" ] ; then
+		COMMAND+=" --tag \"${RESTIC_TAG}\""
+	fi
+
 	log "Forgetting snapshots older than \"${WITHIN}\" from: ${REPO}"
-	restic -r "${REPO}" forget --keep-within "${WITHIN}"
+	log "Using command:"
+	log "$COMMAND"
+	eval "$COMMAND"
+	if [ "$?" -ne 0 ] ; then
+		die "Failed to forget snapshots!"
+	fi
 }
 prune_repo()
 {
@@ -94,7 +115,7 @@ prune_repo()
 
 
 #
-CLOUD_DIR=""
+LOCAL_DIR=""
 RESTIC_REPOSITORY=""
 RESTIC_REPOSITORY_REMOTE=""
 RESTIC_PASSWORD=""
@@ -118,22 +139,38 @@ do
 			log "*** Backup Local Directory - Help Menu ***"
 			log "A simple utility to help backup a local directory to a restic repo"
 			log
-			log "--cloud           ==> Specify local cloud directory (Currently: $CLOUD_DIR)"
-			log "--repo            ==> Specify restic repo for backup destination (Currently: $RESTIC_REPOSITORY)"
+			log "--local           ==> Specify local directory (Currently: \"${LOCAL_DIR}\")"
+			log "--repo            ==> Specify restic repo for backup destination (Currently: \"${RESTIC_REPOSITORY}\")"
+			log "--repo-remote     ==> Specify remote restic repo for backup destination (Currently: \"${RESTIC_REPOSITORY_REMOTE}\") (consult restic docs for format)"
+			log "--tag             ==> Specify a tag to associate with this backup (Currently: \"${RESTIC_TAG}\")"
 			log
 			;;
 
 
-		--cloud|--cloud-dir|-c|-d)
-			CLOUD_DIR="$1"
-			log "Found cloud dir argument: $CLOUD_DIR"
+		--local|--local-dir|--dir|-l|-d)
+			LOCAL_DIR="$1"
+			log "Found cloud dir argument: $LOCAL_DIR"
 			shift
 			;;
 
 
 		--repo|--restic|--restic-repo|-r)
 			RESTIC_REPOSITORY="$1"
-			log "Found restic repo argument: $RESTIC_REPOSITORY"
+			log "Found restic repo argument: ${RESTIC_REPOSITORY}"
+			shift
+			;;
+
+
+		--repo-remote|--restic-remote|--restic-repo-remote|-rr)
+			RESTIC_REPOSITORY_REMOTE="$1"
+			log "Found restic repo argument: ${RESTIC_REPOSITORY_REMOTE}"
+			shift
+			;;
+
+
+		--tag|-t)
+			RESTIC_TAG="$1"
+			log "Found tag argument: ${RESTIC_TAG}"
 			shift
 			;;
 
@@ -155,11 +192,11 @@ done
 log "Finished parsing arguments"
 
 
-#	Cloud dir should be set
-if [ "$CLOUD_DIR" = "" ] ; then
-	die "Cloud dir should be set"
-elif [ ! -d "$CLOUD_DIR" ] ; then
-	die "Cloud dir should be a valid directory: ${CLOUD_DIR}"
+#	Local dir should be set
+if [ "$LOCAL_DIR" = "" ] ; then
+	die "Local dir should be set"
+elif [ ! -d "$LOCAL_DIR" ] ; then
+	die "Local dir should be a valid directory: ${LOCAL_DIR}"
 fi
 
 
@@ -187,12 +224,12 @@ export RESTIC_PASSWORD
 
 #	Backup locally
 heading "Local Backup"
-do_backup "${RESTIC_REPOSITORY}" "${CLOUD_DIR}"
+do_backup "${RESTIC_REPOSITORY}" "${LOCAL_DIR}"
 
 
 #	Backup to another cloud
 heading "Remote Backup"
-do_backup "${RESTIC_REPOSITORY_REMOTE}" "${CLOUD_DIR}"
+do_backup "${RESTIC_REPOSITORY_REMOTE}" "${LOCAL_DIR}"
 
 
 #	Forget old snapshots
