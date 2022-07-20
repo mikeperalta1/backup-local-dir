@@ -1,0 +1,222 @@
+#!/bin/bash
+
+
+#
+log()
+{
+	logger "[Backup Local Dir] $1"
+	echo "[Backup Local Dir] $1"
+}
+notify()
+{
+	notify-send "[Backup Local Dir] $1"
+	log "$1"
+}
+complain()
+{
+	logger -s "[Backup Local Dir] $1"
+	notify-send "[Backup Local Dir] $1"
+}
+die()
+{
+	complain "Fatal: $1"
+	echo
+	exit 1
+}
+quit()
+{
+	local MSG="$1"
+
+	if [ "$MSG" = "" ] ; then
+		log "Quitting ..."
+	else
+		log "Quitting: ${MSG}"
+	fi
+	echo
+
+	exit 0
+}
+heading()
+{
+	echo
+	log "******************************"
+	log "******************************"
+	log "********** $1"
+	log "******************************"
+	log "******************************"
+}
+list_snapshots()
+{
+	local REPO="$1"
+
+	echo
+	log "Listing snapshots for: ${REPO}"
+	restic snapshots -r "${REPO}"
+	if [ "$?" -ne 0 ] ; then
+		die "Failed to list snapshots for repo!: ${REPO}"
+	fi
+	echo
+}
+do_backup()
+{
+	local REPO="$1"
+	local LOCAL_DIR="$2"
+
+	list_snapshots "${REPO}"
+
+	log "Backing up local dir \"${LOCAL_DIR}\" to: ${REPO}"
+	restic backup -r "${REPO}" "${LOCAL_DIR}" \
+		--exclude='.sync_*'
+	if [ "$?" -ne 0 ] ; then
+		die "Failed to backup!: \"${LOCAL_DIR}\" to \"${REPO}\""
+	fi
+	log "Success"
+
+	list_snapshots "${REPO}"
+}
+forget_snapshots()
+{
+	local REPO="$1"
+	local WITHIN="$2"
+
+	#
+	log "Forgetting snapshots older than \"${WITHIN}\" from: ${REPO}"
+	restic -r "${REPO}" forget --keep-within "${WITHIN}"
+}
+prune_repo()
+{
+	local REPO="$1"
+
+	#
+	log "Pruning repository: ${REPO}"
+	restic -r "${REPO}" prune
+}
+
+
+#
+CLOUD_DIR=""
+RESTIC_REPOSITORY=""
+RESTIC_REPOSITORY_REMOTE=""
+RESTIC_PASSWORD=""
+RESTIC_FORGET_KEEP_WITHIN="3m"
+RESTIC_TAG=""
+
+
+#
+log "Begin parsing arguments ..."
+while [ "${#}" -gt 0 ]
+do
+
+	ARG="$1"
+	shift
+
+	case "$ARG" in
+
+
+		--help|-h)
+			log
+			log "*** Backup Local Directory - Help Menu ***"
+			log "A simple utility to help backup a local directory to a restic repo"
+			log
+			log "--cloud           ==> Specify local cloud directory (Currently: $CLOUD_DIR)"
+			log "--repo            ==> Specify restic repo for backup destination (Currently: $RESTIC_REPOSITORY)"
+			log
+			;;
+
+
+		--cloud|--cloud-dir|-c|-d)
+			CLOUD_DIR="$1"
+			log "Found cloud dir argument: $CLOUD_DIR"
+			shift
+			;;
+
+
+		--repo|--restic|--restic-repo|-r)
+			RESTIC_REPOSITORY="$1"
+			log "Found restic repo argument: $RESTIC_REPOSITORY"
+			shift
+			;;
+
+
+		--password|--restic-password|--restic-repo-password|--repo-password|-p)
+			RESTIC_PASSWORD="$1"
+			log "Found restic repo password argument."
+			shift
+			;;
+
+
+		*)
+			die "Unexpected argument: $ARG"
+			;;
+
+	esac
+
+done
+log "Finished parsing arguments"
+
+
+#	Cloud dir should be set
+if [ "$CLOUD_DIR" = "" ] ; then
+	die "Cloud dir should be set"
+elif [ ! -d "$CLOUD_DIR" ] ; then
+	die "Cloud dir should be a valid directory: ${CLOUD_DIR}"
+fi
+
+
+#	Restic repo should be set
+if [ "$RESTIC_REPOSITORY" = "" ] ; then
+	die "Restic repo should be set"
+fi
+
+
+#	Remote restic repo should be set
+if [ "$RESTIC_REPOSITORY_REMOTE" = "" ] ; then
+	die "Remote restic repo should be set"
+fi
+
+
+#	Password shouldn't be blank
+if [ "$RESTIC_PASSWORD" = "" ] ; then
+	die "Restic repo password should be set"
+fi
+
+
+#	Export for restic
+export RESTIC_PASSWORD
+
+
+#	Backup locally
+heading "Local Backup"
+do_backup "${RESTIC_REPOSITORY}" "${CLOUD_DIR}"
+
+
+#	Backup to another cloud
+heading "Remote Backup"
+do_backup "${RESTIC_REPOSITORY_REMOTE}" "${CLOUD_DIR}"
+
+
+#	Forget old snapshots
+heading "Forget old snapshots"
+forget_snapshots "${RESTIC_REPOSITORY}" "${RESTIC_FORGET_KEEP_WITHIN}"
+forget_snapshots "${RESTIC_REPOSITORY_REMOTE}" "${RESTIC_FORGET_KEEP_WITHIN}"
+
+
+#	Prune
+heading "Pruning repositories"
+prune_repo "${RESTIC_REPOSITORY}"
+prune_repo "${RESTIC_REPOSITORY_REMOTE}"
+
+
+
+#
+notify "Finished!"
+
+
+
+exit 0
+
+
+
+
+
+
