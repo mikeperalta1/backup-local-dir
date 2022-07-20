@@ -21,6 +21,7 @@ die()
 {
 	complain "Fatal: $1"
 	echo
+	sleep 600
 	exit 1
 }
 quit()
