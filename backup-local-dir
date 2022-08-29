@@ -35,6 +35,8 @@ quit()
 	fi
 	echo
 
+	sleep 120
+
 	exit 0
 }
 heading()
@@ -251,7 +253,7 @@ notify "Finished!"
 
 
 
-exit 0
+quit "Finished!"
 
 
 
